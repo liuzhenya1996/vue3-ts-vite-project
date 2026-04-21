@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
-// 课程类型定义
+/**
+ * 课程类型定义
+ * @property {number} id - 课程唯一标识符
+ * @property {string} name - 课程名称
+ * @property {number} size - 课程宽度，1-5个格子
+ * @property {number} row - 课程所在行，0-1
+ * @property {number} startCol - 课程起始列，0-4
+ */
 interface Course {
   id: number;
   name: string;
@@ -18,18 +25,31 @@ const nextId = ref(1);
 const draggedCourse = ref<Course | null>(null);
 const dragTarget = ref<{ row: number; col: number } | null>(null);
 
+/**
+ * 开始拖拽课程
+ * @param {Course} course - 要拖拽的课程
+ */
 const dragStart = (course: Course) => {
   // 当正在调整尺寸时，不触发拖动事件
   if (resizingCourse.value) return;
   draggedCourse.value = course;
 };
 
+/**
+ * 拖拽经过格子时的处理
+ * @param {DragEvent} event - 拖拽事件
+ * @param {number} row - 格子所在行
+ * @param {number} col - 格子所在列
+ */
 const dragOver = (event: DragEvent, row: number, col: number) => {
   event.preventDefault();
   // 更新拖动目标位置
   dragTarget.value = { row, col };
 };
 
+/**
+ * 拖拽离开格子时的处理
+ */
 const dragLeave = () => {
   // 离开时清除拖动目标位置
   dragTarget.value = null;
@@ -39,8 +59,15 @@ const dragLeave = () => {
 const resizingCourse = ref<Course | null>(null);
 const resizeStartX = ref(0);
 const resizeStartSize = ref(0);
+const resizeStartCol = ref(0);
 
-const startResize = (course: Course, event: MouseEvent) => {
+/**
+ * 开始调整课程尺寸
+ * @param {Course} course - 要调整尺寸的课程
+ * @param {MouseEvent} event - 鼠标事件
+ * @param {'left' | 'right'} direction - 调整方向，默认为右侧
+ */
+const startResize = (course: Course, event: MouseEvent, direction: 'left' | 'right' = 'right') => {
   // 阻止事件冒泡，避免触发dragstart
   event.stopPropagation();
   // 阻止默认行为
@@ -49,6 +76,7 @@ const startResize = (course: Course, event: MouseEvent) => {
   resizingCourse.value = course;
   resizeStartX.value = event.clientX;
   resizeStartSize.value = course.size;
+  resizeStartCol.value = course.startCol;
   
   // 使用箭头函数确保this指向正确
   const handleMouseMove = (e: MouseEvent) => {
@@ -57,11 +85,45 @@ const startResize = (course: Course, event: MouseEvent) => {
     const deltaX = e.clientX - resizeStartX.value;
     const cellWidth = 100; // 假设每个格子的宽度为100px
     const deltaSize = Math.round(deltaX / cellWidth);
-    const newSize = Math.max(1, Math.min(5, resizeStartSize.value + deltaSize));
     
-    // 检查新尺寸是否可用
-    if (canResizeCourse(resizingCourse.value, newSize)) {
-      resizingCourse.value.size = newSize;
+    if (direction === 'right') {
+      const newSize = Math.max(1, Math.min(5, resizeStartSize.value + deltaSize));
+      
+      // 检查新尺寸是否可用
+      if (canResizeCourse(resizingCourse.value, newSize)) {
+        resizingCourse.value.size = newSize;
+      }
+    } else {
+      // 左侧边缘调整
+      const deltaCol = deltaSize;
+      const newStartCol = Math.max(0, Math.min(4, resizeStartCol.value + deltaCol));
+      const newSize = Math.max(1, Math.min(5, resizeStartSize.value - deltaSize));
+      
+      // 检查新位置和尺寸是否可用
+      if (newStartCol + newSize <= 5) {
+        let canResize = true;
+        for (let col = newStartCol; col < newStartCol + newSize; col++) {
+          // 检查是否有其他课程占用这个位置
+          let isOccupied = false;
+          for (const other of courses.value) {
+            if (other && other !== resizingCourse.value && other.row === resizingCourse.value.row) {
+              if (col >= other.startCol && col < other.startCol + other.size) {
+                isOccupied = true;
+                break;
+              }
+            }
+          }
+          if (isOccupied) {
+            canResize = false;
+            break;
+          }
+        }
+        
+        if (canResize) {
+          resizingCourse.value.startCol = newStartCol;
+          resizingCourse.value.size = newSize;
+        }
+      }
     }
   };
   
@@ -76,7 +138,10 @@ const startResize = (course: Course, event: MouseEvent) => {
   document.addEventListener('mouseup', handleMouseUp);
 };
 
-// 计算每个格子的状态
+/**
+ * 计算每个格子的状态
+ * @returns {boolean[][]} 2x5的网格状态，true表示被占用，false表示空闲
+ */
 const gridStatus = computed(() => {
   const status = Array(2).fill(null).map(() => Array(5).fill(false));
   
@@ -91,7 +156,13 @@ const gridStatus = computed(() => {
   return status;
 });
 
-// 检查位置是否可用
+/**
+ * 检查位置是否可用
+ * @param {number} row - 行号
+ * @param {number} startCol - 起始列号
+ * @param {number} size - 课程宽度
+ * @returns {boolean} 是否可用
+ */
 const isPositionAvailable = (row: number, startCol: number, size: number): boolean => {
   if (startCol + size > 5) return false;
   
@@ -103,7 +174,12 @@ const isPositionAvailable = (row: number, startCol: number, size: number): boole
   return true;
 };
 
-// 检查课程是否可以调整到新尺寸
+/**
+ * 检查课程是否可以调整到新尺寸
+ * @param {Course} course - 要调整的课程
+ * @param {number} newSize - 新尺寸
+ * @returns {boolean} 是否可以调整
+ */
 const canResizeCourse = (course: Course, newSize: number): boolean => {
   if (newSize < 1 || newSize > 5) return false;
   if (course.startCol + newSize > 5) return false;
@@ -126,7 +202,11 @@ const canResizeCourse = (course: Course, newSize: number): boolean => {
   return true;
 };
 
-// 添加课程
+/**
+ * 添加课程
+ * @param {number} row - 行号
+ * @param {number} col - 列号
+ */
 const addCourse = (row: number, col: number) => {
   if (gridStatus.value[row][col]) {
     alert('该位置已被占用');
@@ -168,7 +248,12 @@ const addCourse = (row: number, col: number) => {
   });
 };
 
-// 获取目标位置上的课程
+/**
+ * 获取目标位置上的课程
+ * @param {number} row - 行号
+ * @param {number} col - 列号
+ * @returns {Course | null} 目标位置上的课程，没有则返回null
+ */
 const getCourseAtPosition = (row: number, col: number): Course | null => {
   for (const course of courses.value) {
     if (course && course !== draggedCourse.value && course.row === row) {
@@ -180,7 +265,12 @@ const getCourseAtPosition = (row: number, col: number): Course | null => {
   return null;
 };
 
-// 检查两个课程的位置是否重叠
+/**
+ * 检查两个课程的位置是否重叠
+ * @param {Course} course1 - 第一个课程
+ * @param {Course} course2 - 第二个课程
+ * @returns {boolean} 是否重叠
+ */
 const hasOverlap = (course1: Course, course2: Course): boolean => {
   if (course1.row !== course2.row) return false;
   const start1 = course1.startCol;
@@ -190,7 +280,14 @@ const hasOverlap = (course1: Course, course2: Course): boolean => {
   return start1 < end2 && start2 < end1;
 };
 
-// 检查课程是否可以放置在某个位置
+/**
+ * 检查课程是否可以放置在某个位置
+ * @param {Course} course - 要放置的课程
+ * @param {number} row - 行号
+ * @param {number} startCol - 起始列号
+ * @param {Course | null} excludeCourse - 排除的课程（用于互换位置时）
+ * @returns {boolean} 是否可以放置
+ */
 const canPlaceCourse = (course: Course, row: number, startCol: number, excludeCourse: Course | null): boolean => {
   if (startCol < 0 || startCol + course.size > 5) return false;
 
@@ -205,12 +302,22 @@ const canPlaceCourse = (course: Course, row: number, startCol: number, excludeCo
   return true;
 };
 
-// 检查某个位置是否可以放置当前拖动的课程
+/**
+ * 检查某个位置是否可以放置当前拖动的课程
+ * @param {number} row - 行号
+ * @param {number} col - 列号
+ * @returns {boolean} 是否可以放置
+ */
 const isDroppable = (row: number, col: number): boolean => {
   if (!draggedCourse.value) return false;
   return isPositionAvailable(row, col, draggedCourse.value.size);
 };
 
+/**
+ * 放置课程
+ * @param {number} row - 行号
+ * @param {number} col - 列号
+ */
 const drop = (row: number, col: number) => {
   if (!draggedCourse.value) return;
 
@@ -256,7 +363,10 @@ const drop = (row: number, col: number) => {
   draggedCourse.value = null;
 };
 
-// 移除课程
+/**
+ * 移除课程
+ * @param {Course} course - 要移除的课程
+ */
 const removeCourse = (course: Course) => {
   courses.value = courses.value.filter(c => c.id !== course.id);
 };
@@ -292,19 +402,20 @@ const removeCourse = (course: Course) => {
             v-if="course.row === rowIndex"
             class="course"
             :style="{
-              left: `calc(${course.startCol * 20}% + ${course.startCol * 10}px)`,
-              width: `calc(${course.size * 20}% - ${(course.size - 1) * 10}px)`
+              left: `calc(${course.startCol} * ((100% - 40px) / 5 + 10px))`,
+              width: `calc((${course.size} * (100% - 40px)) / 5 + ${(course.size - 1) * 10}px)`
             }"
             draggable="true"
             @dragstart="dragStart(course)"
             @dragover="dragOver($event, course.row, course.startCol)"
             @drop="drop(course.row, course.startCol)"
           >
+            <div class="resize-handle left" @mousedown="startResize(course, $event, 'left')"></div>
             <div class="course-content">
               <span>{{ course.name }}</span>
               <button class="remove-btn" @click.stop="removeCourse(course)">×</button>
             </div>
-            <div class="resize-handle" @mousedown="startResize(course, $event)"></div>
+            <div class="resize-handle right" @mousedown="startResize(course, $event, 'right')"></div>
           </div>
         </template>
       </div>
@@ -418,13 +529,20 @@ h2 {
 
 .resize-handle {
   position: absolute;
-  right: -5px;
   top: 0;
   bottom: 0;
   width: 10px;
-  cursor: col-resize;
   background-color: rgba(255, 255, 255, 0.3);
+  cursor: ew-resize;
   transition: background-color 0.2s ease;
+}
+
+.resize-handle.left {
+  left: 0;
+}
+
+.resize-handle.right {
+  right: 0;
 }
 
 .resize-handle:hover {
