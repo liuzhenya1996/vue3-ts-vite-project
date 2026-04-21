@@ -345,6 +345,20 @@ const drop = (row: number, col: number) => {
       dragged.startCol = draggedNewCol;
       targetCourse.row = tempRow;
       targetCourse.startCol = tempCol;
+
+      // 检查调换后是否存在重叠
+      if (hasOverlap(dragged, targetCourse)) {
+        // 找出尺寸较小的课程
+        const smallerCourse = dragged.size <= targetCourse.size ? dragged : targetCourse;
+        const largerCourse = dragged.size > targetCourse.size ? dragged : targetCourse;
+
+        // 计算重叠部分，将较小的课程往右推
+        let newStartCol = largerCourse.startCol + largerCourse.size;
+        // 确保新位置不会超出课程表范围
+        if (newStartCol + smallerCourse.size <= 5) {
+          smallerCourse.startCol = newStartCol;
+        }
+      }
     } else {
       alert('这两个课程无法互换位置');
     }

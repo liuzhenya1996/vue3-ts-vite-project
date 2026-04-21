@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import Timetable from './components/Timetable.vue';
+import TimetableColumn from './components/TimetableColumn.vue';
 </script>
 
 <template>
   <div class="app">
     <h1>Vue3 + TypeScript + Vite 课程表</h1>
     <Timetable />
+    <TimetableColumn />
   </div>
 </template>
 
