@@ -268,6 +268,19 @@ const hasOverlap = (course1: Course, course2: Course): boolean => {
 };
 
 /**
+ * 检查两个课程是否紧凑排列
+ */
+const isCompact = (course1: Course, course2: Course): boolean => {
+  const end1 = course1.startRow + course1.size;
+  const start2 = course2.startRow;
+  const end2 = course2.startRow + course2.size;
+  const start1 = course1.startRow;
+  
+  // 检查两个课程是否相邻且紧凑排列
+  return (end1 === start2 && course1.size + course2.size <= 3) || (end2 === start1 && course1.size + course2.size <= 3);
+};
+
+/**
  * 检查课程是否可以放置在某个位置
  */
 const canPlaceCourse = (course: Course, startRow: number, excludeCourse: Course | null): boolean => {
@@ -305,29 +318,52 @@ const drop = (row: number) => {
     const draggedNewRow = targetCourse.startRow;
     const targetNewRow = dragged.startRow;
 
-    const canDraggedMove = canPlaceCourse(dragged, draggedNewRow, targetCourse);
-    const canTargetMove = canPlaceCourse(targetCourse, targetNewRow, dragged);
+    // 检查是否满足紧凑排列的条件
+    const isCompactArrangement = isCompact(dragged, targetCourse) && (dragged.size > 1 || targetCourse.size > 1);
 
-    if (canDraggedMove && canTargetMove) {
-      const tempRow = dragged.startRow;
-      dragged.startRow = draggedNewRow;
-      targetCourse.startRow = tempRow;
-
-      // 检查调换后是否存在重叠
-      if (hasOverlap(dragged, targetCourse)) {
-        // 找出尺寸较小的课程
-        const smallerCourse = dragged.size <= targetCourse.size ? dragged : targetCourse;
-        const largerCourse = dragged.size > targetCourse.size ? dragged : targetCourse;
-
-        // 计算重叠部分，将较小的课程往下推
-        let newStartRow = largerCourse.startRow + largerCourse.size;
-        // 确保新位置不会超出课程表范围
-        if (newStartRow + smallerCourse.size <= 3) {
-          smallerCourse.startRow = newStartRow;
-        }
+    if (isCompactArrangement) {
+      // 紧凑排列的特殊处理：直接调换顺序并保持紧凑
+      const minStartRow = Math.min(dragged.startRow, targetCourse.startRow);
+      const totalSize = dragged.size + targetCourse.size;
+      
+      // 确定调换后的顺序
+      if (dragged.startRow < targetCourse.startRow) {
+        // 原顺序：dragged 在 targetCourse 上方
+        // 调换后：targetCourse 在 dragged 上方
+        targetCourse.startRow = minStartRow;
+        dragged.startRow = minStartRow + targetCourse.size;
+      } else {
+        // 原顺序：targetCourse 在 dragged 上方
+        // 调换后：dragged 在 targetCourse 上方
+        dragged.startRow = minStartRow;
+        targetCourse.startRow = minStartRow + dragged.size;
       }
     } else {
-      alert('这两个课程无法互换位置');
+      // 常规处理
+      const canDraggedMove = canPlaceCourse(dragged, draggedNewRow, targetCourse);
+      const canTargetMove = canPlaceCourse(targetCourse, targetNewRow, dragged);
+
+      if (canDraggedMove && canTargetMove) {
+        const tempRow = dragged.startRow;
+        dragged.startRow = draggedNewRow;
+        targetCourse.startRow = tempRow;
+
+        // 检查调换后是否存在重叠
+        if (hasOverlap(dragged, targetCourse)) {
+          // 找出尺寸较小的课程
+          const smallerCourse = dragged.size <= targetCourse.size ? dragged : targetCourse;
+          const largerCourse = dragged.size > targetCourse.size ? dragged : targetCourse;
+
+          // 计算重叠部分，将较小的课程往下推
+          let newStartRow = largerCourse.startRow + largerCourse.size;
+          // 确保新位置不会超出课程表范围
+          if (newStartRow + smallerCourse.size <= 3) {
+            smallerCourse.startRow = newStartRow;
+          }
+        }
+      } else {
+        alert('这两个课程无法互换位置');
+      }
     }
   } else {
     if (!isPositionAvailable(row, dragged.size)) {
