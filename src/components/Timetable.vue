@@ -6,6 +6,7 @@ import { ref, computed } from 'vue';
  * @property {number} id - 课程唯一标识符
  * @property {string} name - 课程名称
  * @property {number} size - 课程宽度，1-5个格子
+ * @property {number} height - 课程高度，1-2行
  * @property {number} row - 课程所在行，0-1
  * @property {number} startCol - 课程起始列，0-4
  */
@@ -13,6 +14,7 @@ interface Course {
   id: number;
   name: string;
   size: number; // 1-5
+  height: number; // 1-2
   row: number; // 0-1
   startCol: number; // 0-4
 }
@@ -58,16 +60,19 @@ const dragLeave = () => {
 // 调整尺寸相关
 const resizingCourse = ref<Course | null>(null);
 const resizeStartX = ref(0);
+const resizeStartY = ref(0);
 const resizeStartSize = ref(0);
+const resizeStartHeight = ref(0);
 const resizeStartCol = ref(0);
+const resizeStartRow = ref(0);
 
 /**
  * 开始调整课程尺寸
  * @param {Course} course - 要调整尺寸的课程
  * @param {MouseEvent} event - 鼠标事件
- * @param {'left' | 'right'} direction - 调整方向，默认为右侧
+ * @param {'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'} direction - 调整方向
  */
-const startResize = (course: Course, event: MouseEvent, direction: 'left' | 'right' = 'right') => {
+const startResize = (course: Course, event: MouseEvent, direction: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'right') => {
   // 阻止事件冒泡，避免触发dragstart
   event.stopPropagation();
   // 阻止默认行为
@@ -75,53 +80,121 @@ const startResize = (course: Course, event: MouseEvent, direction: 'left' | 'rig
   
   resizingCourse.value = course;
   resizeStartX.value = event.clientX;
+  resizeStartY.value = event.clientY;
   resizeStartSize.value = course.size;
+  resizeStartHeight.value = course.height;
   resizeStartCol.value = course.startCol;
+  resizeStartRow.value = course.row;
   
   // 使用箭头函数确保this指向正确
   const handleMouseMove = (e: MouseEvent) => {
     if (!resizingCourse.value) return;
     
     const deltaX = e.clientX - resizeStartX.value;
+    const deltaY = e.clientY - resizeStartY.value;
     const cellWidth = 100; // 假设每个格子的宽度为100px
+    const cellHeight = 100; // 假设每个格子的高度为100px
     const deltaSize = Math.round(deltaX / cellWidth);
+    const deltaHeight = Math.round(deltaY / cellHeight);
+    
+    const course = resizingCourse.value;
     
     if (direction === 'right') {
+      // 右侧边缘调整 - 只调整宽度
       const newSize = Math.max(1, Math.min(5, resizeStartSize.value + deltaSize));
       
       // 检查新尺寸是否可用
-      if (canResizeCourse(resizingCourse.value, newSize)) {
-        resizingCourse.value.size = newSize;
+      if (canResizeCourse(course, newSize, course.height)) {
+        course.size = newSize;
       }
-    } else {
-      // 左侧边缘调整
+    } else if (direction === 'left') {
+      // 左侧边缘调整 - 调整宽度和起始列
       const deltaCol = deltaSize;
       const newStartCol = Math.max(0, Math.min(4, resizeStartCol.value + deltaCol));
       const newSize = Math.max(1, Math.min(5, resizeStartSize.value - deltaSize));
       
       // 检查新位置和尺寸是否可用
       if (newStartCol + newSize <= 5) {
-        let canResize = true;
-        for (let col = newStartCol; col < newStartCol + newSize; col++) {
-          // 检查是否有其他课程占用这个位置
-          let isOccupied = false;
-          for (const other of courses.value) {
-            if (other && other !== resizingCourse.value && other.row === resizingCourse.value.row) {
-              if (col >= other.startCol && col < other.startCol + other.size) {
-                isOccupied = true;
-                break;
-              }
-            }
-          }
-          if (isOccupied) {
-            canResize = false;
-            break;
-          }
+        if (canResizeCourse(course, newSize, course.height, newStartCol, course.row)) {
+          course.startCol = newStartCol;
+          course.size = newSize;
         }
-        
-        if (canResize) {
-          resizingCourse.value.startCol = newStartCol;
-          resizingCourse.value.size = newSize;
+      }
+    } else if (direction === 'bottom') {
+      // 底部边缘调整 - 只调整高度
+      const newHeight = Math.max(1, Math.min(2, resizeStartHeight.value + deltaHeight));
+      
+      // 检查新尺寸是否可用
+      if (canResizeCourse(course, course.size, newHeight)) {
+        course.height = newHeight;
+      }
+    } else if (direction === 'top') {
+      // 顶部边缘调整 - 调整高度和起始行
+      const deltaRow = deltaHeight;
+      const newStartRow = Math.max(0, Math.min(1, resizeStartRow.value + deltaRow));
+      const newHeight = Math.max(1, Math.min(2, resizeStartHeight.value - deltaHeight));
+      
+      // 检查新位置和尺寸是否可用
+      if (newStartRow + newHeight <= 2) {
+        if (canResizeCourse(course, course.size, newHeight, course.startCol, newStartRow)) {
+          course.row = newStartRow;
+          course.height = newHeight;
+        }
+      }
+    } else if (direction === 'top-left') {
+      // 左上角调整 - 调整宽度、高度、起始列和起始行
+      const deltaCol = deltaSize;
+      const deltaRow = deltaHeight;
+      const newStartCol = Math.max(0, Math.min(4, resizeStartCol.value + deltaCol));
+      const newStartRow = Math.max(0, Math.min(1, resizeStartRow.value + deltaRow));
+      const newSize = Math.max(1, Math.min(5, resizeStartSize.value - deltaSize));
+      const newHeight = Math.max(1, Math.min(2, resizeStartHeight.value - deltaHeight));
+      
+      if (newStartCol + newSize <= 5 && newStartRow + newHeight <= 2) {
+        if (canResizeCourse(course, newSize, newHeight, newStartCol, newStartRow)) {
+          course.startCol = newStartCol;
+          course.row = newStartRow;
+          course.size = newSize;
+          course.height = newHeight;
+        }
+      }
+    } else if (direction === 'top-right') {
+      // 右上角调整 - 调整宽度、高度和起始行
+      const deltaRow = deltaHeight;
+      const newStartRow = Math.max(0, Math.min(1, resizeStartRow.value + deltaRow));
+      const newSize = Math.max(1, Math.min(5, resizeStartSize.value + deltaSize));
+      const newHeight = Math.max(1, Math.min(2, resizeStartHeight.value - deltaHeight));
+      
+      if (course.startCol + newSize <= 5 && newStartRow + newHeight <= 2) {
+        if (canResizeCourse(course, newSize, newHeight, course.startCol, newStartRow)) {
+          course.row = newStartRow;
+          course.size = newSize;
+          course.height = newHeight;
+        }
+      }
+    } else if (direction === 'bottom-left') {
+      // 左下角调整 - 调整宽度、高度和起始列
+      const deltaCol = deltaSize;
+      const newStartCol = Math.max(0, Math.min(4, resizeStartCol.value + deltaCol));
+      const newSize = Math.max(1, Math.min(5, resizeStartSize.value - deltaSize));
+      const newHeight = Math.max(1, Math.min(2, resizeStartHeight.value + deltaHeight));
+      
+      if (newStartCol + newSize <= 5 && course.row + newHeight <= 2) {
+        if (canResizeCourse(course, newSize, newHeight, newStartCol, course.row)) {
+          course.startCol = newStartCol;
+          course.size = newSize;
+          course.height = newHeight;
+        }
+      }
+    } else if (direction === 'bottom-right') {
+      // 右下角调整 - 调整宽度和高度
+      const newSize = Math.max(1, Math.min(5, resizeStartSize.value + deltaSize));
+      const newHeight = Math.max(1, Math.min(2, resizeStartHeight.value + deltaHeight));
+      
+      if (course.startCol + newSize <= 5 && course.row + newHeight <= 2) {
+        if (canResizeCourse(course, newSize, newHeight)) {
+          course.size = newSize;
+          course.height = newHeight;
         }
       }
     }
@@ -147,8 +220,10 @@ const gridStatus = computed(() => {
   
   courses.value.forEach(course => {
     if (course && course !== draggedCourse.value && course !== resizingCourse.value) {
-      for (let col = course.startCol; col < course.startCol + course.size; col++) {
-        status[course.row][col] = true;
+      for (let r = course.row; r < course.row + course.height; r++) {
+        for (let col = course.startCol; col < course.startCol + course.size; col++) {
+          status[r][col] = true;
+        }
       }
     }
   });
@@ -161,14 +236,17 @@ const gridStatus = computed(() => {
  * @param {number} row - 行号
  * @param {number} startCol - 起始列号
  * @param {number} size - 课程宽度
+ * @param {number} height - 课程高度
  * @returns {boolean} 是否可用
  */
-const isPositionAvailable = (row: number, startCol: number, size: number): boolean => {
-  if (startCol + size > 5) return false;
+const isPositionAvailable = (row: number, startCol: number, size: number, height: number = 1): boolean => {
+  if (startCol + size > 5 || row + height > 2) return false;
   
-  for (let col = startCol; col < startCol + size; col++) {
-    if (gridStatus.value[row][col]) {
-      return false;
+  for (let r = row; r < row + height; r++) {
+    for (let col = startCol; col < startCol + size; col++) {
+      if (gridStatus.value[r][col]) {
+        return false;
+      }
     }
   }
   return true;
@@ -177,26 +255,33 @@ const isPositionAvailable = (row: number, startCol: number, size: number): boole
 /**
  * 检查课程是否可以调整到新尺寸
  * @param {Course} course - 要调整的课程
- * @param {number} newSize - 新尺寸
+ * @param {number} newSize - 新宽度
+ * @param {number} newHeight - 新高度
+ * @param {number} newStartCol - 新起始列
+ * @param {number} newStartRow - 新起始行
  * @returns {boolean} 是否可以调整
  */
-const canResizeCourse = (course: Course, newSize: number): boolean => {
+const canResizeCourse = (course: Course, newSize: number, newHeight: number = course.height, newStartCol: number = course.startCol, newStartRow: number = course.row): boolean => {
   if (newSize < 1 || newSize > 5) return false;
-  if (course.startCol + newSize > 5) return false;
+  if (newHeight < 1 || newHeight > 2) return false;
+  if (newStartCol + newSize > 5) return false;
+  if (newStartRow + newHeight > 2) return false;
   
-  for (let col = course.startCol; col < course.startCol + newSize; col++) {
-    // 检查是否有其他课程占用这个位置
-    let isOccupied = false;
-    for (const other of courses.value) {
-      if (other && other !== course && other.row === course.row) {
-        if (col >= other.startCol && col < other.startCol + other.size) {
-          isOccupied = true;
-          break;
+  for (let r = newStartRow; r < newStartRow + newHeight; r++) {
+    for (let col = newStartCol; col < newStartCol + newSize; col++) {
+      // 检查是否有其他课程占用这个位置
+      let isOccupied = false;
+      for (const other of courses.value) {
+        if (other && other !== course) {
+          if (r >= other.row && r < other.row + other.height && col >= other.startCol && col < other.startCol + other.size) {
+            isOccupied = true;
+            break;
+          }
         }
       }
-    }
-    if (isOccupied) {
-      return false;
+      if (isOccupied) {
+        return false;
+      }
     }
   }
   return true;
@@ -213,26 +298,52 @@ const addCourse = (row: number, col: number) => {
     return;
   }
   
-  // 计算最大可用尺寸
+  // 计算最大可用宽度和高度
   let maxSize = 5 - col;
+  let maxHeight = 2 - row;
+  
+  // 找到最大可用的宽度
   for (let size = 1; size <= maxSize; size++) {
-    if (!isPositionAvailable(row, col, size)) {
+    if (!isPositionAvailable(row, col, size, 1)) {
       maxSize = size - 1;
       break;
     }
   }
   
-  if (maxSize === 0) {
+  // 找到最大可用的高度
+  for (let height = 1; height <= maxHeight; height++) {
+    if (!isPositionAvailable(row, col, 1, height)) {
+      maxHeight = height - 1;
+      break;
+    }
+  }
+  
+  if (maxSize === 0 || maxHeight === 0) {
     alert('该位置无法添加课程');
     return;
   }
   
-  // 提示用户选择课程大小
-  const sizeInput = prompt(`请输入课程大小 (1-${maxSize})`, '1');
+  // 提示用户选择课程宽度
+  const sizeInput = prompt(`请输入课程宽度 (1-${maxSize})`, '1');
   const size = parseInt(sizeInput || '1');
   
   if (isNaN(size) || size < 1 || size > maxSize) {
-    alert(`无效的课程大小，请输入 1-${maxSize} 之间的数字`);
+    alert(`无效的课程宽度，请输入 1-${maxSize} 之间的数字`);
+    return;
+  }
+  
+  // 提示用户选择课程高度
+  const heightInput = prompt(`请输入课程高度 (1-${maxHeight})`, '1');
+  const height = parseInt(heightInput || '1');
+  
+  if (isNaN(height) || height < 1 || height > maxHeight) {
+    alert(`无效的课程高度，请输入 1-${maxHeight} 之间的数字`);
+    return;
+  }
+  
+  // 检查选择的尺寸是否可用
+  if (!isPositionAvailable(row, col, size, height)) {
+    alert('选择的尺寸无法放置在该位置');
     return;
   }
   
@@ -243,6 +354,7 @@ const addCourse = (row: number, col: number) => {
     id: nextId.value++,
     name,
     size,
+    height,
     row,
     startCol: col
   });
@@ -256,8 +368,8 @@ const addCourse = (row: number, col: number) => {
  */
 const getCourseAtPosition = (row: number, col: number): Course | null => {
   for (const course of courses.value) {
-    if (course && course !== draggedCourse.value && course.row === row) {
-      if (col >= course.startCol && col < course.startCol + course.size) {
+    if (course && course !== draggedCourse.value) {
+      if (row >= course.row && row < course.row + course.height && col >= course.startCol && col < course.startCol + course.size) {
         return course;
       }
     }
@@ -272,12 +384,11 @@ const getCourseAtPosition = (row: number, col: number): Course | null => {
  * @returns {boolean} 是否重叠
  */
 const hasOverlap = (course1: Course, course2: Course): boolean => {
-  if (course1.row !== course2.row) return false;
-  const start1 = course1.startCol;
-  const end1 = course1.startCol + course1.size;
-  const start2 = course2.startCol;
-  const end2 = course2.startCol + course2.size;
-  return start1 < end2 && start2 < end1;
+  // 检查行是否重叠
+  const rowOverlap = !(course1.row + course1.height <= course2.row || course2.row + course2.height <= course1.row);
+  // 检查列是否重叠
+  const colOverlap = !(course1.startCol + course1.size <= course2.startCol || course2.startCol + course2.size <= course1.startCol);
+  return rowOverlap && colOverlap;
 };
 
 /**
@@ -307,6 +418,7 @@ const isCompact = (course1: Course, course2: Course): boolean => {
  */
 const canPlaceCourse = (course: Course, row: number, startCol: number, excludeCourse: Course | null): boolean => {
   if (startCol < 0 || startCol + course.size > 5) return false;
+  if (row < 0 || row + course.height > 2) return false;
 
   const tempCourse: Course = { ...course, row, startCol };
   for (const other of courses.value) {
@@ -327,7 +439,7 @@ const canPlaceCourse = (course: Course, row: number, startCol: number, excludeCo
  */
 const isDroppable = (row: number, col: number): boolean => {
   if (!draggedCourse.value) return false;
-  return isPositionAvailable(row, col, draggedCourse.value.size);
+  return isPositionAvailable(row, col, draggedCourse.value.size, draggedCourse.value.height);
 };
 
 /**
@@ -403,9 +515,9 @@ const drop = (row: number, col: number) => {
       }
     }
   } else {
-    // 检查新位置是否可用（需要连续的size个格子）
-    if (!isPositionAvailable(row, col, dragged.size)) {
-      alert('该位置无法放置课程，需要连续的' + dragged.size + '个格子');
+    // 检查新位置是否可用（需要连续的size个格子和height行）
+    if (!isPositionAvailable(row, col, dragged.size, dragged.height)) {
+      alert('该位置无法放置课程，需要连续的' + dragged.size + '个格子和' + dragged.height + '行');
       return;
     }
 
@@ -457,19 +569,26 @@ const removeCourse = (course: Course) => {
             class="course"
             :style="{
               left: `calc(${course.startCol} * ((100% - 40px) / 5 + 10px))`,
-              width: `calc((${course.size} * (100% - 40px)) / 5 + ${(course.size - 1) * 10}px)`
+              width: `calc((${course.size} * (100% - 40px)) / 5 + ${(course.size - 1) * 10}px)`,
+              height: course.height === 1 ? '100px' : 'calc(200px + 15px)'
             }"
-            draggable="true"
+            :draggable="!resizingCourse"
             @dragstart="dragStart(course)"
             @dragover="dragOver($event, course.row, course.startCol)"
             @drop="drop(course.row, course.startCol)"
           >
+            <div class="resize-handle top" @mousedown="startResize(course, $event, 'top')"></div>
             <div class="resize-handle left" @mousedown="startResize(course, $event, 'left')"></div>
             <div class="course-content">
               <span>{{ course.name }}</span>
               <button class="remove-btn" @click.stop="removeCourse(course)">×</button>
             </div>
             <div class="resize-handle right" @mousedown="startResize(course, $event, 'right')"></div>
+            <div class="resize-handle bottom" @mousedown="startResize(course, $event, 'bottom')"></div>
+            <div class="resize-handle top-left" @mousedown="startResize(course, $event, 'top-left')"></div>
+            <div class="resize-handle top-right" @mousedown="startResize(course, $event, 'top-right')"></div>
+            <div class="resize-handle bottom-left" @mousedown="startResize(course, $event, 'bottom-left')"></div>
+            <div class="resize-handle bottom-right" @mousedown="startResize(course, $event, 'bottom-right')"></div>
           </div>
         </template>
       </div>
@@ -506,7 +625,6 @@ h2 {
   grid-template-columns: repeat(5, 1fr);
   gap: 10px;
   position: relative;
-  margin-bottom: 10px;
 }
 
 .timetable-cell {
@@ -583,12 +701,42 @@ h2 {
 
 .resize-handle {
   position: absolute;
+  background-color: rgba(255, 255, 255, 0.3);
+  transition: background-color 0.2s ease;
+}
+
+.resize-handle.left,
+.resize-handle.right {
   top: 0;
   bottom: 0;
   width: 10px;
-  background-color: rgba(255, 255, 255, 0.3);
   cursor: ew-resize;
-  transition: background-color 0.2s ease;
+}
+
+.resize-handle.top,
+.resize-handle.bottom {
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.resize-handle.top-left,
+.resize-handle.top-right,
+.resize-handle.bottom-left,
+.resize-handle.bottom-right {
+  width: 10px;
+  height: 10px;
+}
+
+.resize-handle.top-left,
+.resize-handle.bottom-right {
+  cursor: nwse-resize;
+}
+
+.resize-handle.top-right,
+.resize-handle.bottom-left {
+  cursor: ne-resize;
 }
 
 .resize-handle.left {
@@ -596,6 +744,34 @@ h2 {
 }
 
 .resize-handle.right {
+  right: 0;
+}
+
+.resize-handle.top {
+  top: 0;
+}
+
+.resize-handle.bottom {
+  bottom: 0;
+}
+
+.resize-handle.top-left {
+  top: 0;
+  left: 0;
+}
+
+.resize-handle.top-right {
+  top: 0;
+  right: 0;
+}
+
+.resize-handle.bottom-left {
+  bottom: 0;
+  left: 0;
+}
+
+.resize-handle.bottom-right {
+  bottom: 0;
   right: 0;
 }
 
