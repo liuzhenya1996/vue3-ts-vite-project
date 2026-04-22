@@ -5,13 +5,13 @@ import { ref, computed } from 'vue';
  * 课程类型定义
  * @property {number} id - 课程唯一标识符
  * @property {string} name - 课程名称
- * @property {number} size - 课程高度，1-3个格子
+ * @property {number} size - 课程高度，1-2个格子
  * @property {number} startRow - 课程起始行，0-2
  */
 interface Course {
   id: number;
   name: string;
-  size: number; // 1-3
+  size: number; // 1-2
   startRow: number; // 0-2
 }
 
@@ -90,14 +90,14 @@ const startResize = (course: Course, event: MouseEvent, direction: 'top' | 'bott
     const deltaSize = Math.round(deltaY / cellHeight);
     
     if (direction === 'bottom') {
-      const newSize = Math.max(1, Math.min(3, resizeStartSize.value + deltaSize));
+      const newSize = Math.max(1, Math.min(2, resizeStartSize.value + deltaSize));
       
       if (canResizeCourse(resizingCourse.value, newSize)) {
         resizingCourse.value.size = newSize;
       }
     } else {
       // 顶部边缘调整，方向与底部相反
-      const newSize = Math.max(1, Math.min(3, resizeStartSize.value - deltaSize));
+      const newSize = Math.max(1, Math.min(2, resizeStartSize.value - deltaSize));
       const newStartRow = Math.max(0, Math.min(2, resizeStartRow.value + deltaSize));
       
       if (newStartRow + newSize <= 3) {
@@ -208,7 +208,7 @@ const addCourse = (row: number) => {
     return;
   }
   
-  let maxSize = 3 - row;
+  let maxSize = Math.min(2, 3 - row);
   for (let size = 1; size <= maxSize; size++) {
     if (!isPositionAvailable(row, size)) {
       maxSize = size - 1;
